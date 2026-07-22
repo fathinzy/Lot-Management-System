@@ -6,11 +6,11 @@ Run with:  python main.py
 Requires:  Python 3.9+, reportlab  (see requirements.txt)
 
 Tabs:
-  1. Lot Registry        - scan/enter incoming WIP lots
-  2. Master Registrations - Part / Customer / Code / CSR Lot-No Rule registers
-  3. Lot List             - live inventory view
-  4. Pull Out              - consume lots into a packaging lot
-  5. Pull Out List         - history + Packing List PDF w/ barcodes
+  Lot Registry          - scan/enter incoming WIP lots
+  Lot List               - live inventory view
+  Pull Out                - consume lots into a packaging lot
+  Packing List             - pull-out history + Packing List PDF w/ barcodes
+  System Registrations      - Part / Customer / Code / CSR Lot-No Rule registers
 """
 import tkinter as tk
 from tkinter import ttk
@@ -41,16 +41,16 @@ class LotManagementApp(tk.Tk):
         notebook.pack(fill="both", expand=True)
 
         self.tab1 = LotRegistryTab(notebook, self)
-        self.tab2 = MasterRegistrationsTab(notebook, self)
         self.tab3 = LotListTab(notebook, self)
         self.tab4 = PullOutTab(notebook, self)
         self.tab5 = PullOutListTab(notebook, self)
+        self.tab2 = MasterRegistrationsTab(notebook, self)
 
-        notebook.add(self.tab1, text="1. Lot Registry")
-        notebook.add(self.tab2, text="2. Master Registrations")
-        notebook.add(self.tab3, text="3. Lot List")
-        notebook.add(self.tab4, text="4. Pull Out")
-        notebook.add(self.tab5, text="5. Pull Out List / Packing List")
+        notebook.add(self.tab1, text="Lot Registry")
+        notebook.add(self.tab3, text="Lot List")
+        notebook.add(self.tab4, text="Pull Out")
+        notebook.add(self.tab5, text="Packing List")
+        notebook.add(self.tab2, text="System Registrations")
 
         self.notebook = notebook
 
