@@ -35,14 +35,19 @@ CUSTOMER|PARTNO|PARTNAME|REV|ROUTECARDLOTNO|HEATNO|MCNO|MFGDATE|QTY|DATEOFOQC
 
 Example: `Globex Inc|PN-7|Gear Housing|B|RC5001|H10|MC1|2026-07-10|50|2026-07-12`
 
-Any missing trailing fields (including Date of OQC) are simply left
-blank so you can also encode shorter barcodes and finish manually. You
-can just as easily type into the same box and press Enter instead of
+Any missing trailing fields (including Qty and Date of OQC) are simply
+left blank so you can also encode shorter barcodes and finish manually.
+In practice, the Route Card QR typically only carries the first 8
+fields (`CUSTOMER|PARTNO|PARTNAME|REV|ROUTECARDLOTNO|HEATNO|MCNO|MFGDATE`)
+since Input Lot Qty and Date of OQC aren't known until OQC actually
+inspects the lot - OQC scans the QR to auto-fill everything else, then
+types those last two fields in by hand before clicking Confirm. You can
+just as easily type into the same box and press Enter instead of
 scanning. If your factory's barcodes use a different layout, edit
 `SCAN_FIELD_ORDER` / `parse_scan_payload()` in `app/scan_utils.py`.
 
-(This is separate from the Packing List barcode/QR format used in the
-Packing List tab - see sections 5/6 below.)
+(This is separate from the Lot List / QA Acceptance Lot barcode/QR
+format used in the Packing List tab - see sections 5/6 below.)
 
 ## 3. Tabs (left to right)
 
@@ -89,7 +94,10 @@ since it's setup/admin work, not part of the daily flow).
    **Refresh** any time to re-pull customers/codes/rules if you added
    something in another tab while this one was already open.
    - **Code (from Code Register)** - pick one of that customer's
-     registered codes from the dropdown.
+     registered codes from the dropdown. A grey `= description` label
+     appears next to it (e.g. `1PY` -> `= Port`) purely so whoever is
+     building the rule can tell what the code means - it's just a
+     helper label and is never part of the generated lot number.
    - **Mfg Date** and **Date of OQC** - pull from the first/last
      selected lot, with a choice of formats: `D`, `DD`, `M`, `MM`,
      `MMM`, `YY`, `YYYY`, plus the combined presets `YYYYMMDD`,
@@ -124,12 +132,15 @@ since it's setup/admin work, not part of the daily flow).
    everything downstream keeps tracking by the same key). Two other
    fields sit after Input Lot Qty: **Date of OQC**, and an **RTV Lot**
    tick box - check it if the lot is a Return-to-Vendor lot.
-6. **Lot List** - live inventory view, showing each lot's Date of OQC
-   and an **RTV** column so PIC can immediately see which lots are RTV.
+6. **Lot List** - live inventory view, showing each lot's Date of OQC,
+   M/C No, and RTV status.
    - **Search Part No** filters as you type.
    - **Hide Finished Lots** is the single control for showing/hiding
      lots with balance = 0 - tick it to hide them, untick to show them
      again.
+   - **Export to Excel (Backup)** dumps every lot (regardless of any
+     filter) to a plain spreadsheet - a record-keeping backup, separate
+     from the label-data export used by Packaging.
 7. **Pull Out**:
    - Selecting a Part locks the **Lot No. Rule** to that part's
      registered default (from the Part Register) - the dropdown starts
@@ -151,38 +162,54 @@ since it's setup/admin work, not part of the daily flow).
    - **Search Part No** and **Hide Completed Lots** filter the table.
    - **Heat No** column shows the heat number of the *last* selected
      source lot for that packaging lot (same "last wins" convention
-     used throughout the CSR rule engine), and is also printed on the
-     PDF header.
+     used throughout the CSR rule engine).
    - **Mark Complete / Reopen** closes or reopens a packaging lot.
-   - **Generate Packing List (PDF)** - see section 5.
-   - **Export to Excel** - writes every source-lot line item of the
-     selected pull-out straight into a spreadsheet (see section 6).
+   - **Generate Lot List (PDF)** - the full internal-use document
+     (title "Lot List"): includes the Packaging Lot Barcode, the full
+     Source Lot Detail table (each source lot with its own barcode),
+     and a master QR that includes which source lots were combined.
+   - **Generate QA Acceptance Lot (PDF)** - the customer-facing
+     document (title "QA Acceptance Lot"): same header info, but
+     leaves out the Packaging Lot Barcode section and the Source Lot
+     Detail table, and its master QR omits which source lots were
+     combined - so a customer scanning it can't tell that multiple
+     internal WIP lots were merged into the shipment.
+   - **Export to Label Excel** - writes every source-lot line item of
+     the selected pull-out into the label-data spreadsheet (see
+     section 6).
+   - **Export Log to Excel (Backup)** - dumps the entire pull-out
+     history (regardless of any filter) to a plain spreadsheet, for
+     record-keeping - separate from the label-data export above.
    - **Label Scan Station** - scan a barcode straight off a printed
-     Packing List and its full details are appended to the same Excel
-     file automatically, no retyping.
+     Lot List or QA Acceptance Lot PDF and its full details are
+     appended to the label-data Excel file automatically, no retyping.
 
-## 5. Packing List PDF
+## 5. Lot List PDF vs. QA Acceptance Lot PDF
 
-Each generated PDF has:
-- A **master QR code** (top-right) encoding a full summary of the
-  packaging lot: customer, part, rev, packaging lot no, **heat no**,
-  PO, packaging qty, date, prepared by, and every source lot + qty
-  taken.
-- A **Code128 barcode** for the overall packaging lot number.
-- One **Code128 barcode per source-lot line item**, each encoding that
-  line's *complete* detail set (same fields as the QR, but scoped to
-  that specific source lot) - scanning any single row's barcode gives
-  packaging staff everything needed for that carton's label with no
-  manual lookups.
+The Packing List tab generates two different documents from the same
+pull-out record:
 
-Because the per-line barcodes now carry many fields instead of just a
-lot number, the module width auto-shrinks so the barcode still fits on
-the page regardless of payload length. For very data-heavy lines this
-makes for a denser barcode - Code128 is generally best kept to short
-values, so if handheld scanners struggle with the dense per-line
-codes, the QR is the more robust option for a full-detail scan (happy
-to switch the per-line codes to short IDs with the QR carrying all the
-detail instead, if that works better on your floor).
+- **Lot List (PDF)** - the full internal-use document. Title "Lot
+  List". Has the master QR (top-right, includes which source lots were
+  combined), a Packaging Lot Barcode, and a full Source Lot Detail
+  table where every source lot gets its own Code128 barcode encoding
+  that line's complete detail set.
+- **QA Acceptance Lot (PDF)** - the customer-facing document. Title
+  "QA Acceptance Lot". Same header block (Customer, Part No, Rev, PO,
+  Packaging Qty, Packaging Date, Prepared By, Heat No, Packaging Lot
+  No) and the same master QR position, but the Packaging Lot Barcode
+  section and the Source Lot Detail table are both left out, and the
+  QR itself omits the source-lot breakdown - so a customer scanning it
+  has no way to tell that multiple internal WIP lots were merged into
+  this shipment.
+
+Because the per-line barcodes on the Lot List PDF carry many fields
+instead of just a lot number, the module width auto-shrinks so the
+barcode still fits on the page regardless of payload length. For very
+data-heavy lines this makes for a denser barcode - Code128 is generally
+best kept to short values, so if handheld scanners struggle with the
+dense per-line codes, the QR is the more robust option for a
+full-detail scan.
 
 ## 6. Excel export / Label Scan Station (for label-printing software)
 
