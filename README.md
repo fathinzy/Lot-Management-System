@@ -1,8 +1,131 @@
 # Lot Management System
 
-A local desktop application for manufacturing lot traceability and
-packaging workflows. Built with **Python + Tkinter** (UI) and
-**SQLite** (storage) - no server, no internet connection required.
+> A manufacturing lot traceability & packaging system, built to stop
+> wrong lot numbers from reaching customers.
+
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
+![SQLite](https://img.shields.io/badge/Database-SQLite-003B57)
+![Built with Claude](https://img.shields.io/badge/Built%20with-Claude%20AI-8A63D2)
+![Status](https://img.shields.io/badge/Status-In%20Production-brightgreen)
+
+## Why I Built This
+
+Our factory was printing the wrong lot number on shipments — [add the
+specific trigger here, e.g. "a customer complaint in Month/Year after
+a shipment went out with a lot number from the wrong CSR format" or
+"X mislabeled shipments over Y months"]. Lot numbers were built by
+hand per customer, with no consistent rule and no traceability back
+to the actual raw material, heat number, or machine that made the
+part — so once something went out wrong, there was no fast way to
+even confirm what happened, let alone prevent it next time.
+
+I built this system to fix that at the source: every packaging lot
+number is now generated automatically from a rule configured once per
+customer, every shipment traces back to its exact source lots and
+machine, and the same QR code that prints on the label is what
+prevents the manual re-typing that caused the errors in the first
+place.
+
+**Impact so far:** [add real numbers once you have them — e.g. "zero
+wrong-lot-number complaints since go-live", "X hours/week saved on
+manual label entry", "rolled out to N customers' lot formats"].
+
+## Built in 1 Day with Claude AI
+
+The first working version — barcode scanning, the rule-based lot
+number generator, PDF/QR generation, Excel integration — was built in
+a single day using Claude AI, starting from a plain-English
+description of the manufacturing workflow rather than a formal spec.
+It then went through several rounds of real refinement afterward as it
+met actual production requirements: password-protected fields,
+customer-specific part numbers, a bulk Excel import, and a
+customer-facing document that hides internal lot-combination details.
+That combination — fast to a working prototype, then iterated against
+real floor feedback — is the actual story here, not just the 1-day
+part.
+
+## Screenshots
+
+| Lot Registry | Lot List |
+|---|---|
+| ![Lot Registry](screenshots/01_lot_registry.png) | ![Lot List](screenshots/02_lot_list.png) |
+
+| Pull Out — auto-locking lot selection | Packing List |
+|---|---|
+| ![Pull Out](screenshots/03_pull_out_autolock.png) | ![Packing List](screenshots/04_packing_list.png) |
+
+| System Registrations — CSR Rule Builder | Generated QA Acceptance Lot PDF |
+|---|---|
+| ![CSR Rule Builder](screenshots/05_csr_rule_builder.png) | ![QA Acceptance Lot PDF](screenshots/06_qa_acceptance_pdf.png) |
+
+*(All data shown is generic demo data — no real customer or shipment
+information.)*
+
+## Demo Video
+
+[Record a 2-3 minute screen capture walking through: scan a lot in →
+Pull Out with auto-lock → generate the QA Acceptance Lot PDF → scan
+the QR. Upload to YouTube (unlisted is fine) or Loom, then replace this
+line with:]
+
+```markdown
+[![Watch the demo](screenshots/04_packing_list.png)](https://your-video-link-here)
+```
+
+## Key Features
+
+- **Rule-based lot number generator** — every customer's packaging lot
+  number format is configured visually (code, dates, machine number,
+  custom separators, day-of-week codes) instead of hardcoded per
+  customer
+- **Auto-locking lot selection** — Pull Out picks lots FIFO and
+  auto-locks once the target quantity is hit, so no one over-selects
+  by hand
+- **Full traceability** — every shipment links back to its exact
+  source lots, heat numbers, and machine
+- **QR + barcode generation** — printed on a QA Acceptance Lot PDF,
+  scannable straight into Excel for the label printer, no re-typing
+- **Dual document output** — a full-detail internal Lot List vs. a
+  customer-facing QA Acceptance Lot that deliberately hides which
+  internal lots were combined
+- **Password-gated critical fields** — prevents an accidental wrong
+  lot-number-rule selection during Pull Out
+
+## Skills Demonstrated
+
+- Translating a real, messy shop-floor process into a structured data
+  model (customers → parts → lots → pull-outs, with full referential
+  integrity)
+- Designing a **configurable rule engine** (the CSR lot-number builder)
+  instead of hardcoding business logic that was going to keep changing
+- Barcode/QR generation and parsing, and integrating a desktop app with
+  external tooling (label-printing software) via a shared data format
+- Iterative requirements gathering — this system went through many
+  rounds of real refinement driven by actual production use, not a
+  single upfront spec
+- Working effectively with an AI coding assistant: describing
+  requirements clearly, reviewing generated code, and catching/fixing
+  real bugs together rather than accepting output blindly
+
+## Tech Stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Language | Python 3.9+ | Fast to build and iterate with, no licensing cost |
+| UI | Tkinter | Ships with Python — zero extra install for end users |
+| Database | SQLite | Single-file, zero-admin, appropriate for single-site scale |
+| PDF/Barcode | reportlab | Generates the QA Acceptance Lot PDF, Code128 barcodes, QR codes |
+| Excel | openpyxl | Bulk part import, and the label-software data hand-off |
+
+## Roadmap
+
+- [ ] Package as a Windows `.exe` for non-technical end users
+- [ ] Central server-backed version for true multi-station concurrent use
+- [ ] Formal reporting/analytics on lot cycle time and RTV rates
+
+---
+
+# Technical Documentation
 
 ## 1. Setup
 
