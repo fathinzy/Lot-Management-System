@@ -65,7 +65,7 @@ the QR. Upload to YouTube (unlisted is fine) or Loom, then replace this
 line with:]
 
 ```markdown
-![Watch the demo](Lot Management System.mp4)
+![Watch the demo](Lot_Management_System.mp4)
 ```
 
 ## Key Features
