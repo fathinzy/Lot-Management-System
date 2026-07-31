@@ -59,13 +59,10 @@ information.)*
 
 ## Demo Video
 
-[Record a 2-3 minute screen capture walking through: scan a lot in →
-Pull Out with auto-lock → generate the QA Acceptance Lot PDF → scan
-the QR. Upload to YouTube (unlisted is fine) or Loom, then replace this
-line with:]
+(Lot_Management_System.mp4)(https://youtu.be/frkwTAcVibI)
 
 ```markdown
-![Watch the demo](Lot_Management_System.mp4)
+![Watch the demo](Lot_Management_System.mp4)(https://youtu.be/frkwTAcVibI)
 ```
 
 ## Key Features
