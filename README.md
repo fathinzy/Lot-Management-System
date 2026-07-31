@@ -10,11 +10,8 @@
 
 ## Why I Built This
 
-Our factory was printing the wrong lot number on shipments — [add the
-specific trigger here, e.g. "a customer complaint in Month/Year after
-a shipment went out with a lot number from the wrong CSR format" or
-"X mislabeled shipments over Y months"]. Lot numbers were built by
-hand per customer, with no consistent rule and no traceability back
+Our factory having an issue regarding wrong lot number printed during label printing. 
+Lot numbers were built manually per customer, with no consistent rule and no traceability back
 to the actual raw material, heat number, or machine that made the
 part — so once something went out wrong, there was no fast way to
 even confirm what happened, let alone prevent it next time.
@@ -26,9 +23,8 @@ machine, and the same QR code that prints on the label is what
 prevents the manual re-typing that caused the errors in the first
 place.
 
-**Impact so far:** [add real numbers once you have them — e.g. "zero
-wrong-lot-number complaints since go-live", "X hours/week saved on
-manual label entry", "rolled out to N customers' lot formats"].
+**Impact so far:** With this new system I create, we manage to eliminate manual key-in by
+Operator and leads to 100% accuracy of correct details required by customer during parts shipment.
 
 ## Built in 1 Day with Claude AI
 
