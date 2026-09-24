@@ -10,8 +10,11 @@
 
 ## Why I Built This
 
-Our factory having an issue regarding wrong lot number printed during label printing. 
-Lot numbers were built manually per customer, with no consistent rule and no traceability back
+Our factory was printing the wrong lot number on shipments — [add the
+specific trigger here, e.g. "a customer complaint in Month/Year after
+a shipment went out with a lot number from the wrong CSR format" or
+"X mislabeled shipments over Y months"]. Lot numbers were built by
+hand per customer, with no consistent rule and no traceability back
 to the actual raw material, heat number, or machine that made the
 part — so once something went out wrong, there was no fast way to
 even confirm what happened, let alone prevent it next time.
@@ -23,8 +26,9 @@ machine, and the same QR code that prints on the label is what
 prevents the manual re-typing that caused the errors in the first
 place.
 
-**Impact so far:** With this new system I create, we manage to eliminate manual key-in by
-Operator and leads to 100% accuracy of correct details required by customer during parts shipment.
+**Impact so far:** [add real numbers once you have them — e.g. "zero
+wrong-lot-number complaints since go-live", "X hours/week saved on
+manual label entry", "rolled out to N customers' lot formats"].
 
 ## Built in 1 Day with Claude AI
 
@@ -59,10 +63,13 @@ information.)*
 
 ## Demo Video
 
-(Lot_Management_System.mp4)(https://youtu.be/frkwTAcVibI)
+[Record a 2-3 minute screen capture walking through: scan a lot in →
+Pull Out with auto-lock → generate the QA Acceptance Lot PDF → scan
+the QR. Upload to YouTube (unlisted is fine) or Loom, then replace this
+line with:]
 
 ```markdown
-![Watch the demo](Lot_Management_System.mp4)(https://youtu.be/frkwTAcVibI)
+[![Watch the demo](screenshots/04_packing_list.png)](https://your-video-link-here)
 ```
 
 ## Key Features
@@ -146,21 +153,57 @@ listens for Enter. Point the scanner at a barcode encoding pipe (`|`)
 delimited fields in this order and it will auto-fill the form:
 
 ```
-CUSTOMER|PARTNO|PARTNAME|REV|ROUTECARDLOTNO|HEATNO|MCNO|MFGDATE|QTY|DATEOFOQC
+CUSTOMER|PARTNO|ROUTECARDLOTNO|HEATNO|MCNO|MFGDATE|QTY|DATEOFOQC
 ```
 
-Example: `Globex Inc|PN-7|Gear Housing|B|RC5001|H10|MC1|2026-07-10|50|2026-07-12`
+Example: `SENSATA|SEN-T-605064-007 REV.C-1|TI26-2598137|606033|B64|2026-07-30`
+
+Note there's **no separate Part Name field** - the real Route Card QR
+doesn't carry one, so Part Name is always resolved from the Part
+Register lookup instead (see below). Rev also isn't its own field -
+it's expected combined into the Part No field (e.g. `... REV.C-1`) and
+gets split out automatically.
 
 Any missing trailing fields (including Qty and Date of OQC) are simply
 left blank so you can also encode shorter barcodes and finish manually.
-In practice, the Route Card QR typically only carries the first 8
-fields (`CUSTOMER|PARTNO|PARTNAME|REV|ROUTECARDLOTNO|HEATNO|MCNO|MFGDATE`)
-since Input Lot Qty and Date of OQC aren't known until OQC actually
-inspects the lot - OQC scans the QR to auto-fill everything else, then
-types those last two fields in by hand before clicking Confirm. You can
-just as easily type into the same box and press Enter instead of
-scanning. If your factory's barcodes use a different layout, edit
+In practice, the Route Card QR typically only carries the first 6
+fields (`CUSTOMER|PARTNO|ROUTECARDLOTNO|HEATNO|MCNO|MFGDATE`) since
+Input Lot Qty and Date of OQC aren't known until OQC actually inspects
+the lot - OQC scans the QR to auto-fill everything else, then types
+those last two fields in by hand before clicking Confirm. You can just
+as easily type into the same box and press Enter instead of scanning.
+If your factory's barcodes use a different layout, edit
 `SCAN_FIELD_ORDER` / `parse_scan_payload()` in `app/scan_utils.py`.
+
+Every field is cleared at the start of each new scan, so a leftover
+value from a previous manual entry or an earlier scan can never bleed
+into the next lot by accident.
+
+**Combined Part No / Rev fields are handled automatically.** The Part
+No field is expected combined with Rev as a single value (e.g.
+`R1000 Rev.A`, or `SEN-T-605064-007 REV.C-1` with a hyphenated
+revision code) rather than as two separate fields. The system detects
+and splits that automatically - both when scanned and when typed
+manually - so Part No and Rev still land correctly internally. This
+also applies when the same part number has multiple registered
+revisions: once a Rev is known (from a scan or typed input), the
+system requires an **exact** part_no+rev match - if that specific
+revision isn't registered (e.g. a mistyped or wrong Rev on the route
+card), the part is treated as not found rather than silently falling
+back to a different registered revision of the same part. Confirm
+then correctly refuses to save the lot until the right Rev is
+scanned/typed. If your route cards use a different combined format
+(not `... Rev.X`), adjust the pattern in `split_part_no_and_rev()` in
+`app/scan_utils.py`.
+
+**Part Name and Rev aren't shown as separate fields on this form.**
+They're still tracked internally (used for validation, matched against
+the Part Register, and saved with the lot) - once a scan or typed Part
+No resolves to a registered part, the resolved Part Name and Rev show
+up in the status line underneath the form (e.g. "Sensor Terminal (Rev
+C-1)") instead of as editable fields, to keep the scan-and-go flow
+fast. Rev is still fully visible elsewhere in the system - Lot List,
+Pull Out, and the Packing List documents all show it.
 
 (This is separate from the Lot List / QA Acceptance Lot barcode/QR
 format used in the Packing List tab - see sections 5/6 below.)
