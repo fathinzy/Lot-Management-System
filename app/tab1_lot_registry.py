@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from . import database as db
-from .scan_utils import ScanEntry, parse_scan_payload
+from .scan_utils import ScanEntry, parse_scan_payload, split_part_no_and_rev
 
 
 class LotRegistryTab(ttk.Frame):
@@ -46,14 +46,6 @@ class LotRegistryTab(ttk.Frame):
         self.part_combo.grid(row=r, column=3, sticky="w", padx=6)
         self.part_combo.bind("<<ComboboxSelected>>", lambda e: self._autofill_from_part())
         self.part_combo.bind("<FocusOut>", lambda e: self._autofill_from_part())
-
-        r += 1
-        ttk.Label(form, text="Part Name").grid(row=r, column=0, sticky="w", pady=4)
-        ttk.Entry(form, textvariable=self.vars["part_name"], width=30,
-                  state="readonly").grid(row=r, column=1, sticky="w", padx=(6, 20))
-        ttk.Label(form, text="Rev").grid(row=r, column=2, sticky="w")
-        ttk.Entry(form, textvariable=self.vars["rev"], width=30,
-                  state="readonly").grid(row=r, column=3, sticky="w", padx=6)
 
         r += 1
         ttk.Label(form, text="Route Card Lot No").grid(row=r, column=0, sticky="w", pady=4)
@@ -116,26 +108,54 @@ class LotRegistryTab(ttk.Frame):
     def _autofill_from_part(self):
         customer = db.get_customer_by_name(self.vars["customer"].get())
         if not customer:
-            return
+            return False
         typed_value = self.vars["part_no"].get().strip()
         if not typed_value:
-            return
+            return False
+        # Some route cards combine Part No and Rev into one field (e.g.
+        # "R1000 Rev.A" or "SEN-T-605064-007 REV.C-1") instead of keeping
+        # them separate - split that apart first so both the lookup and
+        # the Rev field itself get clean values regardless of which
+        # format arrived. Part Name and Rev are tracked internally (used
+        # for validation and saved with the lot) but are not shown as
+        # separate fields on this form - the confirmation below is the
+        # only place they surface, to keep the scan-and-go flow fast.
+        clean_value, embedded_rev = split_part_no_and_rev(typed_value)
+        if embedded_rev:
+            typed_value = clean_value
+            self.vars["part_no"].set(clean_value)
+            self.vars["rev"].set(embedded_rev)
+
         # The operator may have typed either the internal Part Number or the
         # Customer Part Number (from the Part Register) - detect whichever
         # matches and normalize the field to the canonical internal number,
-        # since that's what Lot Registry / route cards track by.
-        row = db.find_part_by_any_no(customer["id"], typed_value)
+        # since that's what Lot Registry / route cards track by. Passing the
+        # already-known Rev (if any) avoids silently matching the wrong
+        # revision when multiple revs of the same part are registered.
+        known_rev = self.vars["rev"].get().strip() or None
+        row = db.find_part_by_any_no(customer["id"], typed_value, rev=known_rev)
         if row:
-            if row["customer_part_no"] and typed_value == row["customer_part_no"]:
-                self.status_label.config(
-                    text=f"Matched via Customer Part Number -> Part No {row['part_no']}.",
-                    foreground="#31708f")
             self.vars["part_no"].set(row["part_no"] or "")
             self.vars["part_name"].set(row["part_name"] or "")
             self.vars["rev"].set(row["rev"] or "")
 
+            via_customer_pn = row["customer_part_no"] and typed_value == row["customer_part_no"]
+            detail = row["part_name"] or ""
+            if row["rev"]:
+                detail = f"{detail} (Rev {row['rev']})" if detail else f"Rev {row['rev']}"
+            prefix = f"Matched via Customer Part Number -> Part No {row['part_no']}. " if via_customer_pn else ""
+            self.status_label.config(text=f"{prefix}{detail}".strip(), foreground="#31708f")
+            return True
+        return False
+
     def _on_scan(self, payload):
         data = parse_scan_payload(payload)
+        # Clear every field first - otherwise a value left over from a
+        # previous manual entry or scan (e.g. Part Name resolved last
+        # time) can silently persist if this scan's payload doesn't
+        # happen to include that field.
+        for v in self.vars.values():
+            v.set("")
         if data.get("customer"):
             self.vars["customer"].set(data["customer"])
             self._refresh_part_lookup()
@@ -143,9 +163,12 @@ class LotRegistryTab(ttk.Frame):
                     "heat_no", "mc_no", "mfg_date", "input_lot_qty", "date_of_oqc"):
             if data.get(key):
                 self.vars[key].set(data[key])
-        self._autofill_from_part()
-        self.status_label.config(text="Barcode scanned - review and click Confirm.",
-                                  foreground="#31708f")
+        matched = self._autofill_from_part()
+        if not matched:
+            self.status_label.config(
+                text="Barcode scanned - part not found in Part Register yet. "
+                     "Check Part No / Rev, or register it first.",
+                foreground="#a94442")
 
     def _clear_fields(self):
         for v in self.vars.values():

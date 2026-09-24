@@ -243,13 +243,33 @@ def get_part_by_id(part_id):
     return row
 
 
-def find_part_by_any_no(customer_id, typed_value):
+def find_part_by_any_no(customer_id, typed_value, rev=None):
     """Lot Registry lets the operator type either the internal Part Number
     or the Customer Part Number - this resolves whichever was typed back
-    to the canonical part record (and its internal part_no)."""
+    to the canonical part record (and its internal part_no).
+
+    If `rev` is given (e.g. already known from a scanned Route Card QR),
+    ONLY an exact part_no+rev match is returned - if that specific
+    revision isn't registered, this returns None rather than silently
+    falling back to a different revision of the same part (that would
+    defeat the entire point of capturing Rev from the scan in the first
+    place - a wrong/mistyped Rev must be rejected, not quietly swapped
+    for whichever revision happens to be registered).
+
+    The "most recent match, ignoring rev" fallback only applies when no
+    rev is known at all (rev=None) - e.g. before any embedded revision
+    has been parsed out of a scan."""
     if not typed_value:
         return None
     conn = get_conn()
+    if rev:
+        row = conn.execute(
+            "SELECT * FROM parts WHERE customer_id=? AND (part_no=? OR customer_part_no=?) "
+            "AND rev=? ORDER BY id DESC LIMIT 1",
+            (customer_id, typed_value, typed_value, rev),
+        ).fetchone()
+        conn.close()
+        return row
     row = conn.execute(
         "SELECT * FROM parts WHERE customer_id=? AND (part_no=? OR customer_part_no=?) "
         "ORDER BY id DESC LIMIT 1",
