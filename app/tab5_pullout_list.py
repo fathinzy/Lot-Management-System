@@ -6,9 +6,10 @@ from . import label_payload as lp
 from . import excel_export as xlx
 from .pdf_generator import generate_lot_list_pdf, generate_qa_acceptance_pdf
 from .scan_utils import ScanEntry
+from . import app_paths
 
-DEFAULT_LABEL_EXPORT_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "label_export.xlsx")
+# Sits next to the .exe when packaged (persistent), or next to main.py in dev.
+DEFAULT_LABEL_EXPORT_PATH = app_paths.data_path("label_export.xlsx")
 
 
 class PullOutListTab(ttk.Frame):

@@ -1,0 +1,6 @@
+# Build-time only. These are needed on the machine that BUILDS the .exe,
+# not on the OQC laptops that just run it.
+#
+#   pip install -r requirements-build.txt
+#
+pyinstaller>=6.0.0

@@ -5,10 +5,13 @@ All tables, schema creation, and CRUD helpers live here so the UI
 layer never has to write raw SQL.
 """
 import sqlite3
-import os
 import datetime
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lot_management.db")
+from . import app_paths
+
+# Data file lives next to the .exe when packaged (persistent), or next to
+# main.py in dev mode - see app_paths.py. Never inside the temp unpack folder.
+DB_PATH = app_paths.data_path("lot_management.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS customers (
