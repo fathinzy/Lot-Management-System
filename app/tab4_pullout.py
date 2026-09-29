@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from . import database as db
 from . import lot_number_generator as lng
+from .date_picker import DatePickerField
 
 RULE_CHANGE_PASSWORD = "12345"
 
@@ -165,7 +166,8 @@ class PullOutTab(ttk.Frame):
         ttk.Label(form, text="Packaging Qty *").grid(row=r, column=0, sticky="w", pady=3)
         ttk.Entry(form, textvariable=self.qty_var, width=24).grid(row=r, column=1, padx=6)
         ttk.Label(form, text="Packaging Date").grid(row=r, column=2, sticky="w")
-        ttk.Entry(form, textvariable=self.date_var, width=24).grid(row=r, column=3, padx=6)
+        DatePickerField(form, textvariable=self.date_var, width=22).grid(
+            row=r, column=3, sticky="w", padx=6)
 
         r += 1
         ttk.Label(form, text="Prepared By").grid(row=r, column=0, sticky="w", pady=3)

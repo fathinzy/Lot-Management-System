@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from . import database as db
 from .scan_utils import ScanEntry, parse_scan_payload, split_part_no_and_rev
+from .date_picker import DatePickerField
 
 
 class LotRegistryTab(ttk.Frame):
@@ -59,16 +60,16 @@ class LotRegistryTab(ttk.Frame):
         ttk.Label(form, text="M/C Number").grid(row=r, column=0, sticky="w", pady=4)
         ttk.Entry(form, textvariable=self.vars["mc_no"], width=30).grid(
             row=r, column=1, sticky="w", padx=(6, 20))
-        ttk.Label(form, text="Mfg Date (YYYY-MM-DD)").grid(row=r, column=2, sticky="w")
-        ttk.Entry(form, textvariable=self.vars["mfg_date"], width=30).grid(
+        ttk.Label(form, text="Mfg Date").grid(row=r, column=2, sticky="w")
+        DatePickerField(form, textvariable=self.vars["mfg_date"], width=28).grid(
             row=r, column=3, sticky="w", padx=6)
 
         r += 1
         ttk.Label(form, text="Input Lot Qty *").grid(row=r, column=0, sticky="w", pady=4)
         ttk.Entry(form, textvariable=self.vars["input_lot_qty"], width=30).grid(
             row=r, column=1, sticky="w", padx=(6, 20))
-        ttk.Label(form, text="Date of OQC (YYYY-MM-DD)").grid(row=r, column=2, sticky="w")
-        ttk.Entry(form, textvariable=self.vars["date_of_oqc"], width=30).grid(
+        ttk.Label(form, text="Date of OQC").grid(row=r, column=2, sticky="w")
+        DatePickerField(form, textvariable=self.vars["date_of_oqc"], width=28).grid(
             row=r, column=3, sticky="w", padx=6)
 
         r += 1

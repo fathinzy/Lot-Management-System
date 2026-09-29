@@ -21,10 +21,14 @@ Build with:  build.bat   (or:  pyinstaller LotManagementSystem.spec)
 """
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-datas = collect_data_files("reportlab")
+# reportlab ships fonts; babel (used by tkcalendar) ships locale data - both
+# are loaded dynamically and must be collected or the packaged .exe fails.
+datas = collect_data_files("reportlab") + collect_data_files("babel")
 hiddenimports = (
     collect_submodules("reportlab.graphics.barcode")
     + collect_submodules("openpyxl")
+    + collect_submodules("babel")
+    + ["tkcalendar", "babel.numbers"]
 )
 
 
