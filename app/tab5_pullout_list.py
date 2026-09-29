@@ -4,9 +4,10 @@ from tkinter import ttk, filedialog, messagebox
 from . import database as db
 from . import label_payload as lp
 from . import excel_export as xlx
-from .pdf_generator import generate_lot_list_pdf, generate_qa_acceptance_pdf
+from .pdf_generator import generate_qa_acceptance_pdf
 from .scan_utils import ScanEntry
 from . import app_paths
+from . import lot_number_generator as lng
 
 # Sits next to the .exe when packaged (persistent), or next to main.py in dev.
 DEFAULT_LABEL_EXPORT_PATH = app_paths.data_path("label_export.xlsx")
@@ -26,22 +27,19 @@ class PullOutListTab(ttk.Frame):
         search_entry.pack(side="left", padx=6)
         search_entry.bind("<KeyRelease>", lambda e: self.refresh())
 
-        self.hide_complete_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(top, text="Hide Completed Lots", variable=self.hide_complete_var,
+        # Unticked (default) hides lots that already had a QA Acceptance Lot
+        # PDF generated; tick "Show All" to see every lot including those.
+        self.show_all_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(top, text="Show All", variable=self.show_all_var,
                          command=self.refresh).pack(side="left", padx=(12, 0))
 
         ttk.Button(top, text="Refresh", command=self.refresh).pack(side="left", padx=(12, 0))
-        ttk.Button(top, text="Mark Complete", command=self._mark_complete).pack(
-            side="left", padx=6)
-        ttk.Button(top, text="Reopen", command=self._mark_open).pack(side="left")
-        ttk.Button(top, text="Generate Lot List (PDF)",
-                   command=self._generate_lot_list_pdf).pack(side="left", padx=(12, 0))
+        ttk.Button(top, text="Regenerate Lot No.",
+                   command=self._regenerate_lot_no).pack(side="left", padx=(12, 0))
         ttk.Button(top, text="Generate QA Acceptance Lot (PDF)",
                    command=self._generate_qa_acceptance_pdf).pack(side="left", padx=6)
         ttk.Button(top, text="Export to Label Excel", command=self._export_excel).pack(
-            side="left", padx=(12, 0))
-        ttk.Button(top, text="Export Log to Excel (Backup)",
-                   command=self._export_log_backup).pack(side="left", padx=6)
+            side="left", padx=6)
 
         cols = ("status", "customer", "part_no", "rev", "packaging_lot_no", "heat_no",
                  "source_lots", "qty", "packaging_date", "po_number", "prepared_by")
@@ -103,34 +101,22 @@ class PullOutListTab(ttk.Frame):
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         rows = db.list_pullouts(part_no_search=self.search_var.get().strip() or None,
-                                 hide_completed=self.hide_complete_var.get())
+                                 hide_qa_generated=not self.show_all_var.get())
         for p in rows:
             source_lots = db.get_pullout_lots(p["id"])
             source_str = ", ".join(sl["route_card_lot_no"] or "" for sl in source_lots)
-            status = p["status"] or "OPEN"
-            tag = "complete" if status == "COMPLETE" else ""
+            qa_done = bool(p["qa_generated"]) if "qa_generated" in p.keys() else False
+            status = "QA GENERATED" if qa_done else "OPEN"
+            tag = "complete" if qa_done else ""
             heat_no = p["heat_no"] or (source_lots[-1]["heat_no"] if source_lots else "")
-            display_part_no = p["customer_part_no"] or p["part_no"]
+            # Packing List shows the Print Part Number (falls back appropriately).
+            display_part_no = (
+                (p["print_part_no"] if "print_part_no" in p.keys() else None)
+                or p["customer_part_no"] or p["part_no"])
             self.tree.insert("", "end", iid=str(p["id"]), tags=(tag,), values=(
                 status, p["customer_name"], display_part_no, p["rev"] or "", p["packaging_lot_no"],
                 heat_no or "", source_str, p["packaging_qty"], p["packaging_date"],
                 p["po_number"], p["prepared_by"]))
-
-    def _mark_complete(self):
-        sel = self.tree.selection()
-        if not sel:
-            messagebox.showwarning("Select a row", "Select a pull-out record first.")
-            return
-        db.set_pullout_status(int(sel[0]), "COMPLETE")
-        self.refresh()
-
-    def _mark_open(self):
-        sel = self.tree.selection()
-        if not sel:
-            messagebox.showwarning("Select a row", "Select a pull-out record first.")
-            return
-        db.set_pullout_status(int(sel[0]), "OPEN")
-        self.refresh()
 
     def _get_selected_pullout(self):
         sel = self.tree.selection()
@@ -142,23 +128,59 @@ class PullOutListTab(ttk.Frame):
         pullout_lots = db.get_pullout_lots(pullout_id)
         return pullout, pullout_lots
 
-    def _generate_lot_list_pdf(self):
+    def _regenerate_lot_no(self):
+        """Rebuild the stored Packaging Lot Number for the selected pull-out
+        using the part's CURRENT default rule (Option A). Use this after you
+        corrected a rule and want an existing pull-out to pick up the fix.
+        New pull-outs already use the latest rule automatically."""
         pullout, pullout_lots = self._get_selected_pullout()
         if not pullout:
             return
-        default_name = f"LotList_{pullout['packaging_lot_no']}.pdf".replace("/", "-")
-        out_path = filedialog.asksaveasfilename(
-            defaultextension=".pdf", initialfile=default_name,
-            filetypes=[("PDF files", "*.pdf")],
-        )
-        if not out_path:
+        part = db.get_part_by_id(pullout["part_id"])
+        if not part:
+            messagebox.showerror("Regenerate", "Could not find the part for this pull-out.")
             return
-        try:
-            generate_lot_list_pdf(out_path, pullout, pullout_lots)
-        except Exception as e:
-            messagebox.showerror("PDF Error", f"Failed to generate PDF:\n{e}")
+        rule_id = part["default_rule_id"] if "default_rule_id" in part.keys() else None
+        rule = db.get_rule_by_id(rule_id) if rule_id else None
+        if not rule:
+            messagebox.showwarning(
+                "No rule set",
+                "This part has no default Lot No. Rule set in the Part Register, "
+                "so there's nothing to regenerate from. Set the part's Lot No. Rule "
+                "first, then try again.")
             return
-        messagebox.showinfo("Done", f"Lot List saved to:\n{out_path}")
+
+        # code_value falls back to the part's assigned code (may be blank now
+        # that Code lives in the rule); the rule's own Code component wins.
+        code_value = ""
+        if "code_value" in part.keys() and part["code_value"]:
+            code_value = part["code_value"]
+
+        components = lng.components_from_json(rule["components_json"])
+        new_lot_no = lng.generate(
+            components, pullout_lots, po_number=pullout["po_number"] or "",
+            code_value=code_value, separator=rule["separator"] or "")
+        if not new_lot_no:
+            messagebox.showwarning("Regenerate", "The rule produced an empty lot number.")
+            return
+
+        old_lot_no = pullout["packaging_lot_no"] or "(none)"
+        if not messagebox.askyesno(
+            "Confirm Regenerate",
+            f"Rule: {rule['rule_name']}\n\n"
+            f"Old Packaging Lot No:\n    {old_lot_no}\n\n"
+            f"New Packaging Lot No:\n    {new_lot_no}\n\n"
+            "Update this pull-out to the new number? This also clears its "
+            "'QA GENERATED' status so you can re-issue a corrected QA "
+            "Acceptance Lot PDF."):
+            return
+
+        db.update_pullout_lot_no(pullout["id"], new_lot_no)
+        self.refresh()
+        messagebox.showinfo(
+            "Regenerated",
+            f"Packaging Lot No updated to:\n{new_lot_no}\n\n"
+            "You can now generate the corrected QA Acceptance Lot PDF.")
 
     def _generate_qa_acceptance_pdf(self):
         pullout, pullout_lots = self._get_selected_pullout()
@@ -176,6 +198,10 @@ class PullOutListTab(ttk.Frame):
         except Exception as e:
             messagebox.showerror("PDF Error", f"Failed to generate PDF:\n{e}")
             return
+        # Generating the QA Acceptance Lot marks this pull-out as done, so it
+        # drops out of the default (Show All unticked) Packing List view.
+        db.set_pullout_qa_generated(pullout["id"], True)
+        self.refresh()
         messagebox.showinfo("Done", f"QA Acceptance Lot saved to:\n{out_path}")
 
     def _export_excel(self):
@@ -189,16 +215,3 @@ class PullOutListTab(ttk.Frame):
             return
         messagebox.showinfo(
             "Exported", f"{count} row(s) written to:\n{self.label_export_path}")
-
-    def _export_log_backup(self):
-        out_path = filedialog.asksaveasfilename(
-            defaultextension=".xlsx", initialfile="pullout_log_backup.xlsx",
-            filetypes=[("Excel files", "*.xlsx")])
-        if not out_path:
-            return
-        try:
-            count = xlx.export_pullout_log_backup(out_path)
-        except Exception as e:
-            messagebox.showerror("Excel Error", f"Failed to export backup:\n{e}")
-            return
-        messagebox.showinfo("Exported", f"{count} record(s) written to:\n{out_path}")

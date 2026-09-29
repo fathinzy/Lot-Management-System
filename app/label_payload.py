@@ -49,11 +49,12 @@ def _get(row, key, default=""):
 
 
 def _effective_part_no(pullout):
-    """Packing List documents use the Customer Part Number (route cards and
-    internal WIP tracking use the internal Part Number instead - see
-    Part Register). Falls back to the internal number if no customer part
-    number was registered."""
-    return _get(pullout, "customer_part_no") or _get(pullout, "part_no")
+    """Packing List documents / printed labels use the Print Part Number.
+    Falls back to the Route Card Part Number, then the internal Part Number,
+    if the Print Part Number wasn't registered."""
+    return (_get(pullout, "print_part_no")
+            or _get(pullout, "customer_part_no")
+            or _get(pullout, "part_no"))
 
 
 def build_line_payload(pullout, pullout_lot):

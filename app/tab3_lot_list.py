@@ -24,9 +24,11 @@ class LotListTab(ttk.Frame):
         search_entry.pack(side="left", padx=6)
         search_entry.bind("<KeyRelease>", lambda e: self.refresh())
 
-        self.hide_finished_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(filt, text="Hide Finished Lots (balance = 0)",
-                         variable=self.hide_finished_var,
+        # Finished lots (balance = 0) are hidden by default. Tick "Show All"
+        # to reveal them; untick to hide them again.
+        self.show_all_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(filt, text="Show All (include finished lots)",
+                         variable=self.show_all_var,
                          command=self.refresh).pack(side="left", padx=(12, 0))
 
         ttk.Button(filt, text="Refresh", command=self.refresh).pack(side="left", padx=(12, 0))
@@ -68,7 +70,9 @@ class LotListTab(ttk.Frame):
             part_no_search=self.search_var.get().strip() or None,
         )
         for r in rows:
-            if self.hide_finished_var.get() and (r["balance_lot_qty"] or 0) <= 0:
+            # Default: hide finished (balance = 0) lots. Only show them when
+            # "Show All" is ticked.
+            if not self.show_all_var.get() and (r["balance_lot_qty"] or 0) <= 0:
                 continue
             is_rtv = bool(r["is_rtv"])
             tag = "rtv" if is_rtv else ("depleted" if (r["balance_lot_qty"] or 0) <= 0 else "")

@@ -169,11 +169,10 @@ class PartRegisterTab(ttk.Frame):
 
         self.customer_var = tk.StringVar()
         self.part_no_var = tk.StringVar()
-        self.customer_part_no_var = tk.StringVar()
+        self.customer_part_no_var = tk.StringVar()   # relabeled "Route Card Part Number"
+        self.print_part_no_var = tk.StringVar()       # used on Packing List / labels
         self.part_name_var = tk.StringVar()
         self.rev_var = tk.StringVar()
-        self.code_var = tk.StringVar()
-        self.code_desc_var = tk.StringVar(value="")
         self.rule_var = tk.StringVar()
         self.supplier_var = tk.StringVar()
         self.material_var = tk.StringVar()
@@ -190,25 +189,18 @@ class PartRegisterTab(ttk.Frame):
         ttk.Entry(form, textvariable=self.part_no_var, width=25).grid(row=r, column=3, padx=6)
 
         r += 1
-        ttk.Label(form, text="Customer Part Number").grid(row=r, column=0, sticky="w", pady=3)
+        ttk.Label(form, text="Route Card Part Number").grid(row=r, column=0, sticky="w", pady=3)
         ttk.Entry(form, textvariable=self.customer_part_no_var, width=25).grid(
             row=r, column=1, padx=6)
-        ttk.Label(form, text="(route card uses Part Number; Packing List uses this instead)",
-                  foreground="#777777").grid(row=r, column=2, columnspan=2, sticky="w")
+        ttk.Label(form, text="Print Part Number").grid(row=r, column=2, sticky="w")
+        ttk.Entry(form, textvariable=self.print_part_no_var, width=25).grid(
+            row=r, column=3, padx=6)
 
         r += 1
         ttk.Label(form, text="Part Name").grid(row=r, column=0, sticky="w", pady=3)
         ttk.Entry(form, textvariable=self.part_name_var, width=25).grid(row=r, column=1, padx=6)
         ttk.Label(form, text="Rev").grid(row=r, column=2, sticky="w")
         ttk.Entry(form, textvariable=self.rev_var, width=25).grid(row=r, column=3, padx=6)
-
-        r += 1
-        ttk.Label(form, text="Code").grid(row=r, column=0, sticky="w", pady=3)
-        self.code_combo = ttk.Combobox(form, textvariable=self.code_var, state="readonly", width=25)
-        self.code_combo.grid(row=r, column=1, padx=6)
-        self.code_combo.bind("<<ComboboxSelected>>", lambda e: self._preview_code_desc())
-        ttk.Label(form, textvariable=self.code_desc_var, foreground="#777777").grid(
-            row=r, column=2, columnspan=2, sticky="w")
 
         r += 1
         ttk.Label(form, text="Lot No. Rule").grid(row=r, column=0, sticky="w", pady=3)
@@ -250,15 +242,16 @@ class PartRegisterTab(ttk.Frame):
         self.edit_hint.pack(anchor="w", pady=(4, 0))
 
         self.tree = ttk.Treeview(
-            self, columns=("customer", "part_no", "cust_part_no", "part_name", "rev", "code",
-                           "rule", "supplier", "material", "default_qty"),
+            self, columns=("customer", "part_no", "route_card_part_no", "print_part_no",
+                           "part_name", "rev", "rule", "supplier", "material", "default_qty"),
             show="headings", height=13)
-        headers = [("customer", "Customer", 100), ("part_no", "Part No", 90),
-                   ("cust_part_no", "Customer Part No", 110),
-                   ("part_name", "Part Name", 110), ("rev", "Rev", 40),
-                   ("code", "Code", 65), ("rule", "Lot No. Rule", 100),
-                   ("supplier", "Supplier", 90), ("material", "Material", 80),
-                   ("default_qty", "Default Qty", 75)]
+        headers = [("customer", "Customer", 95), ("part_no", "Part No", 90),
+                   ("route_card_part_no", "Route Card Part No", 120),
+                   ("print_part_no", "Print Part No", 110),
+                   ("part_name", "Part Name", 100), ("rev", "Rev", 40),
+                   ("rule", "Lot No. Rule", 95),
+                   ("supplier", "Supplier", 85), ("material", "Material", 75),
+                   ("default_qty", "Default Qty", 70)]
         for c, t, w in headers:
             self.tree.heading(c, text=t)
             self.tree.column(c, width=w)
@@ -272,17 +265,7 @@ class PartRegisterTab(ttk.Frame):
         self.customer_combo["values"] = [c["name"] for c in db.list_customers()]
 
     def _refresh_customer_scoped(self):
-        self._refresh_codes()
         self._refresh_rules()
-
-    def _refresh_codes(self):
-        customer = db.get_customer_by_name(self.customer_var.get())
-        if not customer:
-            self.code_combo["values"] = []
-            return
-        codes = db.list_codes(customer["id"])
-        self.code_combo["values"] = [c["code"] for c in codes]
-        self._codes_cache = {c["code"]: c for c in codes}
 
     def _refresh_rules(self):
         customer = db.get_customer_by_name(self.customer_var.get())
@@ -293,18 +276,14 @@ class PartRegisterTab(ttk.Frame):
         self.rule_combo["values"] = [r["rule_name"] for r in rules]
         self._rules_cache = {r["rule_name"]: r for r in rules}
 
-    def _preview_code_desc(self):
-        code = getattr(self, "_codes_cache", {}).get(self.code_var.get())
-        self.code_desc_var.set(f"({code['description']})" if code and code["description"] else "")
-
     def _save(self):
         customer = db.get_customer_by_name(self.customer_var.get())
         part_no = self.part_no_var.get().strip()
         if not customer or not part_no:
             messagebox.showwarning("Validation", "Customer and Part Number are required.")
             return
-        code_row = getattr(self, "_codes_cache", {}).get(self.code_var.get())
-        code_id = code_row["id"] if code_row else None
+        # Code is no longer a part-level field; it lives in the CSR rule.
+        code_id = None
         rule_row = getattr(self, "_rules_cache", {}).get(self.rule_var.get())
         rule_id = rule_row["id"] if rule_row else None
         try:
@@ -319,7 +298,9 @@ class PartRegisterTab(ttk.Frame):
                 part_name=self.part_name_var.get(), rev=self.rev_var.get(),
                 code_id=code_id, material_supplier=self.supplier_var.get(),
                 material_type=self.material_var.get(), default_lot_qty=default_qty,
-                default_rule_id=rule_id, customer_part_no=self.customer_part_no_var.get().strip() or None,
+                default_rule_id=rule_id,
+                customer_part_no=self.customer_part_no_var.get().strip() or None,
+                print_part_no=self.print_part_no_var.get().strip() or None,
             )
             messagebox.showinfo("Updated", f"Part {part_no} updated.")
         else:
@@ -328,7 +309,9 @@ class PartRegisterTab(ttk.Frame):
                 part_name=self.part_name_var.get(), rev=self.rev_var.get(),
                 code_id=code_id, material_supplier=self.supplier_var.get(),
                 material_type=self.material_var.get(), default_lot_qty=default_qty,
-                default_rule_id=rule_id, customer_part_no=self.customer_part_no_var.get().strip() or None,
+                default_rule_id=rule_id,
+                customer_part_no=self.customer_part_no_var.get().strip() or None,
+                print_part_no=self.print_part_no_var.get().strip() or None,
             )
             messagebox.showinfo("Saved", f"Part {part_no} saved.")
         self._clear_form()
@@ -352,15 +335,10 @@ class PartRegisterTab(ttk.Frame):
         self._refresh_customer_scoped()
         self.part_no_var.set(part["part_no"] or "")
         self.customer_part_no_var.set(part["customer_part_no"] or "")
+        self.print_part_no_var.set(
+            part["print_part_no"] if "print_part_no" in part.keys() and part["print_part_no"] else "")
         self.part_name_var.set(part["part_name"] or "")
         self.rev_var.set(part["rev"] or "")
-        code_name = ""
-        for code_str, row in getattr(self, "_codes_cache", {}).items():
-            if row["id"] == part["code_id"]:
-                code_name = code_str
-                break
-        self.code_var.set(code_name)
-        self._preview_code_desc()
         rule_name = ""
         for rname, row in getattr(self, "_rules_cache", {}).items():
             if row["id"] == part["default_rule_id"]:
@@ -380,10 +358,9 @@ class PartRegisterTab(ttk.Frame):
         self.customer_var.set("")
         self.part_no_var.set("")
         self.customer_part_no_var.set("")
+        self.print_part_no_var.set("")
         self.part_name_var.set("")
         self.rev_var.set("")
-        self.code_var.set("")
-        self.code_desc_var.set("")
         self.rule_var.set("")
         self.supplier_var.set("")
         self.material_var.set("")
@@ -415,9 +392,10 @@ class PartRegisterTab(ttk.Frame):
     def refresh_list(self):
         self.tree.delete(*self.tree.get_children())
         for p in db.list_parts():
+            print_pn = p["print_part_no"] if "print_part_no" in p.keys() else ""
             self.tree.insert("", "end", iid=str(p["id"]), values=(
                 p["customer_name"], p["part_no"], p["customer_part_no"] or "",
-                p["part_name"] or "", p["rev"] or "", p["code_value"] or "",
+                print_pn or "", p["part_name"] or "", p["rev"] or "",
                 p["default_rule_name"] or "", p["material_supplier"] or "",
                 p["material_type"] or "", p["default_lot_qty"] or ""))
 

@@ -130,6 +130,16 @@ def _migrate(conn):
         conn.execute("ALTER TABLE pullouts ADD COLUMN heat_no TEXT")
     if not has_column("parts", "customer_part_no"):
         conn.execute("ALTER TABLE parts ADD COLUMN customer_part_no TEXT")
+    # print_part_no: the number printed on labels / used on the Packing List
+    # documents. Distinct from part_no (internal / route card) and
+    # customer_part_no (relabeled "Route Card Part Number" in the UI).
+    if not has_column("parts", "print_part_no"):
+        conn.execute("ALTER TABLE parts ADD COLUMN print_part_no TEXT")
+    # qa_generated: set to 1 once a QA Acceptance Lot PDF has been generated
+    # for a pull-out. Drives the Packing List "show all / hide generated"
+    # filter (replaces the old OPEN/COMPLETE status workflow).
+    if not has_column("pullouts", "qa_generated"):
+        conn.execute("ALTER TABLE pullouts ADD COLUMN qa_generated INTEGER DEFAULT 0")
     conn.commit()
 
 
@@ -265,25 +275,31 @@ def find_part_by_any_no(customer_id, typed_value, rev=None):
     if not typed_value:
         return None
     conn = get_conn()
+    # A scan/typed value may be any of the three registered numbers:
+    # internal Part Number, Route Card Part Number (customer_part_no), or
+    # Print Part Number (print_part_no).
     if rev:
         row = conn.execute(
-            "SELECT * FROM parts WHERE customer_id=? AND (part_no=? OR customer_part_no=?) "
+            "SELECT * FROM parts WHERE customer_id=? AND "
+            "(part_no=? OR customer_part_no=? OR print_part_no=?) "
             "AND rev=? ORDER BY id DESC LIMIT 1",
-            (customer_id, typed_value, typed_value, rev),
+            (customer_id, typed_value, typed_value, typed_value, rev),
         ).fetchone()
         conn.close()
         return row
     row = conn.execute(
-        "SELECT * FROM parts WHERE customer_id=? AND (part_no=? OR customer_part_no=?) "
+        "SELECT * FROM parts WHERE customer_id=? AND "
+        "(part_no=? OR customer_part_no=? OR print_part_no=?) "
         "ORDER BY id DESC LIMIT 1",
-        (customer_id, typed_value, typed_value),
+        (customer_id, typed_value, typed_value, typed_value),
     ).fetchone()
     conn.close()
     return row
 
 
 def upsert_part(customer_id, part_no, part_name, rev, code_id, material_supplier,
-                 material_type, default_lot_qty, default_rule_id=None, customer_part_no=None):
+                 material_type, default_lot_qty, default_rule_id=None, customer_part_no=None,
+                 print_part_no=None):
     conn = get_conn()
     try:
         existing = conn.execute(
@@ -293,17 +309,17 @@ def upsert_part(customer_id, part_no, part_name, rev, code_id, material_supplier
         if existing:
             conn.execute(
                 "UPDATE parts SET part_name=?, code_id=?, material_supplier=?, "
-                "material_type=?, default_lot_qty=?, default_rule_id=?, customer_part_no=? "
-                "WHERE id=?",
+                "material_type=?, default_lot_qty=?, default_rule_id=?, customer_part_no=?, "
+                "print_part_no=? WHERE id=?",
                 (part_name, code_id, material_supplier, material_type, default_lot_qty,
-                 default_rule_id, customer_part_no, existing["id"]),
+                 default_rule_id, customer_part_no, print_part_no, existing["id"]),
             )
         else:
             conn.execute(
-                "INSERT INTO parts(customer_id, part_no, customer_part_no, part_name, rev, "
-                "code_id, material_supplier, material_type, default_lot_qty, default_rule_id) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (customer_id, part_no, customer_part_no, part_name, rev, code_id,
+                "INSERT INTO parts(customer_id, part_no, customer_part_no, print_part_no, "
+                "part_name, rev, code_id, material_supplier, material_type, default_lot_qty, "
+                "default_rule_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (customer_id, part_no, customer_part_no, print_part_no, part_name, rev, code_id,
                  material_supplier, material_type, default_lot_qty, default_rule_id),
             )
         conn.commit()
@@ -313,16 +329,16 @@ def upsert_part(customer_id, part_no, part_name, rev, code_id, material_supplier
 
 def update_part_by_id(part_id, customer_id, part_no, part_name, rev, code_id,
                        material_supplier, material_type, default_lot_qty, default_rule_id,
-                       customer_part_no=None):
+                       customer_part_no=None, print_part_no=None):
     """Used by the Part Register edit flow, where the part number/rev itself
     may be changed on an already-registered part."""
     conn = get_conn()
     try:
         conn.execute(
-            "UPDATE parts SET customer_id=?, part_no=?, customer_part_no=?, part_name=?, "
-            "rev=?, code_id=?, material_supplier=?, material_type=?, default_lot_qty=?, "
-            "default_rule_id=? WHERE id=?",
-            (customer_id, part_no, customer_part_no, part_name, rev, code_id,
+            "UPDATE parts SET customer_id=?, part_no=?, customer_part_no=?, print_part_no=?, "
+            "part_name=?, rev=?, code_id=?, material_supplier=?, material_type=?, "
+            "default_lot_qty=?, default_rule_id=? WHERE id=?",
+            (customer_id, part_no, customer_part_no, print_part_no, part_name, rev, code_id,
              material_supplier, material_type, default_lot_qty, default_rule_id, part_id),
         )
         conn.commit()
@@ -489,19 +505,24 @@ def create_pullout(customer_id, part_id, po_number, packaging_qty, packaging_dat
     return pullout_id
 
 
-def list_pullouts(part_no_search=None, hide_completed=False):
+def list_pullouts(part_no_search=None, hide_qa_generated=False):
+    """hide_qa_generated=True hides pull-outs that have already had a QA
+    Acceptance Lot PDF generated (the Packing List's default view). The
+    part-no search matches any of the three registered numbers."""
     conn = get_conn()
     q = ("SELECT pullouts.*, customers.name as customer_name, parts.part_no, parts.rev, "
-         "parts.customer_part_no "
+         "parts.customer_part_no, parts.print_part_no "
          "FROM pullouts JOIN customers ON customers.id = pullouts.customer_id "
          "JOIN parts ON parts.id = pullouts.part_id WHERE 1=1")
     params = []
     if part_no_search:
-        q += " AND (parts.part_no LIKE ? OR parts.customer_part_no LIKE ?)"
+        q += (" AND (parts.part_no LIKE ? OR parts.customer_part_no LIKE ? "
+              "OR parts.print_part_no LIKE ?)")
         params.append(f"%{part_no_search}%")
         params.append(f"%{part_no_search}%")
-    if hide_completed:
-        q += " AND (pullouts.status IS NULL OR pullouts.status != 'COMPLETE')"
+        params.append(f"%{part_no_search}%")
+    if hide_qa_generated:
+        q += " AND (pullouts.qa_generated IS NULL OR pullouts.qa_generated = 0)"
     q += " ORDER BY pullouts.id DESC"
     rows = conn.execute(q, params).fetchall()
     conn.close()
@@ -517,23 +538,55 @@ def set_pullout_status(pullout_id, status):
         conn.close()
 
 
+def set_pullout_qa_generated(pullout_id, generated=True):
+    """Flag a pull-out as having had its QA Acceptance Lot PDF generated,
+    so the Packing List can hide it by default."""
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE pullouts SET qa_generated=? WHERE id=?",
+                     (1 if generated else 0, pullout_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_pullout_lots(pullout_id):
     conn = get_conn()
+    # Ordered by pullout_lots.id = the order the lots were selected at
+    # pull-out time, which the lot-number generator relies on (first/last).
+    # date_of_oqc is included so the CSR "Date of OQC" components can be
+    # regenerated correctly.
     rows = conn.execute(
         "SELECT pullout_lots.*, lots.route_card_lot_no, lots.heat_no, lots.mc_no, "
-        "lots.mfg_date, lots.part_no, lots.part_name, lots.rev "
+        "lots.mfg_date, lots.date_of_oqc, lots.part_no, lots.part_name, lots.rev "
         "FROM pullout_lots JOIN lots ON lots.id = pullout_lots.lot_id "
-        "WHERE pullout_id=?", (pullout_id,),
+        "WHERE pullout_id=? ORDER BY pullout_lots.id ASC", (pullout_id,),
     ).fetchall()
     conn.close()
     return rows
+
+
+def update_pullout_lot_no(pullout_id, packaging_lot_no):
+    """Overwrite the stored packaging lot number for an existing pull-out.
+    Used by the Packing List 'Regenerate Lot No.' action after a rule was
+    corrected. Also clears the qa_generated flag so a corrected QA
+    Acceptance Lot PDF can be re-issued."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE pullouts SET packaging_lot_no=?, qa_generated=0 WHERE id=?",
+            (packaging_lot_no, pullout_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_pullout(pullout_id):
     conn = get_conn()
     row = conn.execute(
         "SELECT pullouts.*, customers.name as customer_name, parts.part_no, parts.rev, "
-        "parts.customer_part_no "
+        "parts.customer_part_no, parts.print_part_no "
         "FROM pullouts JOIN customers ON customers.id = pullouts.customer_id "
         "JOIN parts ON parts.id = pullouts.part_id WHERE pullouts.id=?", (pullout_id,)
     ).fetchone()
