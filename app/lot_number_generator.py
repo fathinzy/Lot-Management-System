@@ -60,7 +60,7 @@ DATE_FORMAT_OPTIONS = [
     "D", "DD", "M", "MM", "MMM", "YY", "YYYY",
 ]
 
-# Manufacturing month letter code: A-H then J,K,L,M (I is skipped, as is
+# Month letter code (from the Date of OQC): A-H then J,K,L,M (I is skipped, as is
 # common practice in date/lot coding to avoid confusion with the digit 1).
 MONTH_CODE_MAP = {
     1: "A", 2: "B", 3: "C", 4: "D", 5: "E", 6: "F",
@@ -230,8 +230,15 @@ def _render_component(component, lots, po_number, code_value):
         }.get(fmt, yr_full)
 
     if ctype == "month_code":
+        # Driven by the Date of OQC (not Mfg Date).
         lot = _pick_source_lot(component, lots)
-        d = _parse_mfg_date(lot["mfg_date"]) if lot else None
+        raw = None
+        if lot is not None:
+            try:
+                raw = lot["date_of_oqc"]
+            except (KeyError, IndexError):
+                raw = None
+        d = _parse_date(raw) if raw else None
         if not d:
             return ""
         return MONTH_CODE_MAP.get(d.month, "")

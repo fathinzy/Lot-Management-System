@@ -28,6 +28,7 @@ from reportlab.graphics.barcode import code128
 from reportlab.graphics.barcode.qr import QrCodeWidget
 from reportlab.graphics.shapes import Drawing
 from reportlab.graphics import renderPDF
+from reportlab.pdfgen import canvas
 
 from . import label_payload as lp
 
@@ -188,9 +189,108 @@ def generate_lot_list_pdf(output_path, pullout, pullout_lots):
     return _build_pdf(output_path, pullout, pullout_lots, title="Lot List", include_details=True)
 
 
-def generate_qa_acceptance_pdf(output_path, pullout, pullout_lots):
+CARDS_PER_PAGE = 3
+
+
+def _draw_qa_card(c, pullout, master_payload, top_y, page_w):
+    """Draw one QA Acceptance Lot card whose top edge is at top_y (points).
+    Layout: title, two label/value columns, master QR top-right, and the
+    'Packing' / 'Remarks' write-in boxes under the right-hand column."""
+    try:
+        heat_no = pullout["heat_no"]
+    except (KeyError, IndexError):
+        heat_no = None
+    display_part_no = lp._effective_part_no(pullout)
+
+    left_label_x = 22 * mm
+    left_value_x = 54 * mm
+    right_label_x = 107 * mm
+    right_value_x = 140 * mm
+    row_h = 6.6 * mm
+
+    # Master QR (top-right) + caption.
+    qr_size = 25 * mm
+    qr_x = page_w - 26 * mm - qr_size
+    qr_y = top_y - 3 * mm - qr_size
+    renderPDF.draw(_qr_drawing(master_payload, qr_size), c, qr_x, qr_y)
+    c.setFont("Helvetica", 6)
+    c.drawCentredString(qr_x + qr_size / 2, qr_y - 3 * mm, "Scan for full details")
+
+    # Title, centred over the text area (left of the QR).
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString((left_label_x + qr_x) / 2, top_y - 10 * mm, "QA Acceptance Lot")
+
+    left_rows = [
+        ("Customer:", pullout["customer_name"]),
+        ("Part No:", display_part_no),
+        ("Packaging Date:", pullout["packaging_date"]),
+        ("Packaging Qty:", str(pullout["packaging_qty"])),
+        ("Heat No:", heat_no or ""),
+    ]
+    right_rows = [
+        ("PO Number:", pullout["po_number"]),
+        ("Rev:", pullout["rev"]),
+        ("Prepared By:", pullout["prepared_by"]),
+        ("Packaging Lot No:", pullout["packaging_lot_no"]),
+    ]
+    first_row_y = top_y - 22 * mm
+    for i, (lab, val) in enumerate(left_rows):
+        y = first_row_y - i * row_h
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(left_label_x, y, lab)
+        c.setFont("Helvetica", 9)
+        c.drawString(left_value_x, y, str(val if val is not None else ""))
+    for i, (lab, val) in enumerate(right_rows):
+        y = first_row_y - i * row_h
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(right_label_x, y, lab)
+        c.setFont("Helvetica", 9)
+        c.drawString(right_value_x, y, str(val if val is not None else ""))
+
+    # Packing / Remarks write-in boxes.
+    box_w, box_h = 26 * mm, 18 * mm
+    box_top = first_row_y - 3 * row_h - 9 * mm
+    c.setLineWidth(1)
+    for bx, text in ((108 * mm, "Packing"), (137 * mm, "Remarks")):
+        c.setFont("Helvetica", 9)
+        c.drawCentredString(bx + box_w / 2, box_top + 1.5 * mm, text)
+        c.rect(bx, box_top - box_h, box_w, box_h)
+
+
+def generate_qa_acceptance_pdf(output_path, pullout, pullout_lots, copies=1):
     """Customer-facing document - title 'QA Acceptance Lot'. Leaves out
     the Packaging Lot Barcode section and the Source Lot Detail table,
     and the master QR omits the source-lot breakdown, so a customer
-    can't tell that multiple internal WIP lots were combined."""
-    return _build_pdf(output_path, pullout, pullout_lots, title="QA Acceptance Lot", include_details=False)
+    can't tell that multiple internal WIP lots were combined.
+
+    copies: how many QA Acceptance Lot cards to print. Cards are stacked
+    CARDS_PER_PAGE (3) per A4 page to save paper; anything beyond a full
+    page flows onto the next page."""
+    copies = max(1, int(copies))
+    page_w, page_h = A4
+    margin_top = 10 * mm
+    slot_h = (page_h - 2 * margin_top) / CARDS_PER_PAGE
+
+    master_payload = lp.build_master_payload(pullout, pullout_lots,
+                                              include_source_lots=False)
+    c = canvas.Canvas(output_path, pagesize=A4)
+    c.setTitle("QA Acceptance Lot")
+    for n in range(copies):
+        slot = n % CARDS_PER_PAGE
+        if n > 0 and slot == 0:
+            c.showPage()
+        top_y = page_h - margin_top - slot * slot_h
+        _draw_qa_card(c, pullout, master_payload, top_y, page_w)
+        # Dashed cut line under every card except the last one on the page
+        # (and the last card overall).
+        is_last_on_page = slot == CARDS_PER_PAGE - 1 or n == copies - 1
+        if not is_last_on_page:
+            c.saveState()
+            c.setDash(3, 3)
+            c.setStrokeColor(colors.grey)
+            c.setLineWidth(0.4)
+            y = top_y - slot_h + 2 * mm
+            c.line(12 * mm, y, page_w - 12 * mm, y)
+            c.restoreState()
+    c.save()
+    return output_path

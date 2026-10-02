@@ -1,6 +1,6 @@
 import os
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 from . import database as db
 from . import label_payload as lp
 from . import excel_export as xlx
@@ -186,6 +186,13 @@ class PullOutListTab(ttk.Frame):
         pullout, pullout_lots = self._get_selected_pullout()
         if not pullout:
             return
+        copies = simpledialog.askinteger(
+            "Number of QA Acceptance Lot cards",
+            "How many QA Acceptance Lot cards do you need?\n\n"
+            "3 cards fit on one page; extras continue on the next page.",
+            parent=self, initialvalue=1, minvalue=1, maxvalue=300)
+        if copies is None:
+            return
         default_name = f"QAAcceptanceLot_{pullout['packaging_lot_no']}.pdf".replace("/", "-")
         out_path = filedialog.asksaveasfilename(
             defaultextension=".pdf", initialfile=default_name,
@@ -194,7 +201,7 @@ class PullOutListTab(ttk.Frame):
         if not out_path:
             return
         try:
-            generate_qa_acceptance_pdf(out_path, pullout, pullout_lots)
+            generate_qa_acceptance_pdf(out_path, pullout, pullout_lots, copies=copies)
         except Exception as e:
             messagebox.showerror("PDF Error", f"Failed to generate PDF:\n{e}")
             return
